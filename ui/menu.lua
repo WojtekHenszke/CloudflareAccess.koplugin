@@ -137,6 +137,19 @@ function M.addToMainMenu(plugin, menu_items)
                     return require("ui.domain_editor").buildSubMenu()
                 end,
             },
+            -- Custom header rules
+            {
+                text_func = function()
+                    local count = #config.getCustomHeaders()
+                    if count == 0 then
+                        return _("Custom header rules: none")
+                    end
+                    return T(_("Custom header rules: %1 rule(s)"), count)
+                end,
+                sub_item_table_func = function()
+                    return require("ui.header_rules_editor").buildSubMenu()
+                end,
+            },
             -- Log level submenu
             {
                 text_func = function()
@@ -214,9 +227,10 @@ function M.addToMainMenu(plugin, menu_items)
                 callback = function()
                     UIManager:show(InfoMessage:new{
                         text = _([[
-Cloudflare Access v0.1.0
+Cloudflare Access v0.2.0
 
-Injects Cloudflare Access service-token headers into outgoing HTTP/HTTPS requests.]]),
+Injects Cloudflare Access service-token headers and user-defined
+custom HTTP headers into outgoing HTTP/HTTPS requests.]]),
                     })
                 end,
                 separator = true,
