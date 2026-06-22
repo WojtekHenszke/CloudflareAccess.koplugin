@@ -1,0 +1,6 @@
+# Default to LF line endings, let git handle normalization
+* text=auto eol=lf
+
+# Explicit LF for source and docs
+*.lua text eol=lf
+*.md text eol=lf

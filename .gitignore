@@ -1,0 +1,47 @@
+# --- Local / per-device settings and secrets (never commit) ---
+*.local.lua
+settings.local/
+*.token
+*.secret
+
+# --- Project management / reference files (not part of the plugin) ---
+prompt.md
+2-claudflare-auth.lua
+
+# --- Agent tooling ---
+.commandcode/
+
+# --- Lua ---
+*.luac
+
+# --- macOS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+Icon
+
+# --- Linux ---
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# --- JetBrains ---
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# --- VS Code ---
+.vscode/
+*.code-workspace
+
+# --- Logs ---
+*.log
+
+# --- KOReader submodule (added in Task 02) ---
+# koreader/ is tracked as a git submodule; its own .gitignore handles build
+# artifacts. Do not ignore the directory itself.
