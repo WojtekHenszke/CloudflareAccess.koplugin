@@ -133,10 +133,8 @@ function M.addToMainMenu(plugin, menu_items)
                     end
                     return T(_("Allowlist: %1 domain(s)"), count)
                 end,
-                keep_menu_open = true,
-                callback = function()
-                    local domain_editor = require("ui.domain_editor")
-                    domain_editor.show()
+                sub_item_table_func = function()
+                    return require("ui.domain_editor").buildSubMenu()
                 end,
             },
             -- Log level submenu
