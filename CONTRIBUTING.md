@@ -33,6 +33,63 @@ points the LSP at `koreader/frontend/` so `require()` calls resolve to real
 KOReader modules, and tells the server not to diagnose the submodule's own
 files.
 
----
+## Prerequisites
 
-_Linting, testing and emulator instructions will be added in a later task._
+Install [LuaRocks](https://luarocks.org/) and the dev tools. KOReader runs on
+**LuaJIT** (Lua 5.1 compatible), so the linter and test runner must be installed
+against LuaJIT — not Lua 5.5+, which is incompatible with `luacheck`.
+
+```sh
+# macOS (Homebrew)
+brew install luajit luarocks
+luarocks --lua-dir="$(brew --prefix luajit)" install luacheck
+luarocks --lua-dir="$(brew --prefix luajit)" install busted
+```
+
+Verify the install (Lua should report **LuaJIT**, not Lua 5.5):
+
+```sh
+luacheck --version   # Lua: LuaJIT 2.1…
+busted --version     # 2.3.0
+```
+
+## Linting
+
+The project ships a `.luacheckrc` adapted from KOReader's own config
+(`std = "luajit"`, `max_line_length = 120`). Run:
+
+```sh
+luacheck .
+```
+
+All commits must pass with zero warnings.
+
+## Testing
+
+Pure-Lua modules (e.g. `lib/url_match.lua`) have unit tests using
+[busted](https://lunarmodules.github.io/busted/):
+
+```sh
+busted spec/
+```
+
+## Testing on the KOReader emulator
+
+KOReader includes a `kodev` build tool that can run a desktop emulator. See the
+[KOReader README](https://github.com/koreader/koreader#building-prerequisites)
+for build prerequisites and platform instructions.
+
+To test this plugin in the emulator, copy the plugin files into the submodule's
+`plugins/` directory, then build and run:
+
+```sh
+mkdir -p koreader/plugins/CloudflareAccess.koplugin
+cp -r *.lua ui lib koreader/plugins/CloudflareAccess.koplugin/
+cd koreader && ./kodev build && ./kodev run
+```
+
+## Optional: kopl CLI
+
+[`kopl`](https://github.com/consoleaf/kopl) is a community Go-based tool that
+can scaffold koplugins and run static checks. It is **not** required — the
+`luacheck` + `busted` setup above is sufficient — but some may find it useful.
