@@ -10,6 +10,7 @@ entry opens a multi-field edit dialog.
 
 local ConfirmBox = require("ui/widget/confirmbox")
 local InfoMessage = require("ui/widget/infomessage")
+local MultiInputDialog = require("ui/widget/multiinputdialog")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local T = require("ffi/util").template
@@ -66,6 +67,20 @@ local function build_rule_submenu(index)
                 local rule = config.getCustomHeader(index)
                 if rule then
                     config.setCustomHeaderEnabled(index, not rule.enabled)
+                end
+            end,
+        },
+        {
+            text = _("Secret value"),
+            checked_func = function()
+                local rule = config.getCustomHeader(index)
+                return rule and rule.secret or false
+            end,
+            callback = function()
+                local rule = config.getCustomHeader(index)
+                if rule then
+                    rule.secret = not rule.secret
+                    config.updateCustomHeader(index, rule)
                 end
             end,
         },
@@ -127,15 +142,110 @@ function M.buildSubMenu()
     return items
 end
 
+--- Parse a comma-separated domains string into an array.
+-- @string s comma-separated domain list
+-- @treturn table array of trimmed domain strings
+local function parse_domains(s)
+    local domains = {}
+    if not s or s == "" then
+        return domains
+    end
+    for part in s:gmatch("[^,]+") do
+        part = part:match("^%s*(.-)%s*$")
+        if part ~= "" then
+            domains[#domains + 1] = part:lower()
+        end
+    end
+    return domains
+end
+
 --- Edit or create a rule.
+-- Opens a MultiInputDialog with fields for header name, value, and domains.
+-- Enabled and secret flags are preserved on edit, defaulted on create.
 -- @param touchmenu_instance the TouchMenu instance for refreshing
 -- @param index 1-based index for editing, nil for creating new
 function M.editRule(touchmenu_instance, index)
-    -- Implemented in Task 06; placeholder for now.
-    UIManager:show(InfoMessage:new{
-        text = _("Rule editor coming soon."),
-        timeout = 2,
-    })
+    local is_new = index == nil
+    local existing
+    if not is_new then
+        existing = config.getCustomHeader(index)
+        if not existing then return end
+    end
+
+    local name = existing and existing.name or ""
+    local value = existing and existing.value or ""
+    local domains_str = existing and table.concat(existing.domains, ", ") or ""
+    local secret = existing and existing.secret or true
+    local enabled = existing and existing.enabled or true
+
+    local dialog
+    dialog = MultiInputDialog:new{
+        title = is_new and _("Add custom header rule") or _("Edit custom header rule"),
+        fields = {
+            {
+                text = name,
+                input_type = "string",
+                hint = _("Header name (e.g. X-Api-Key)"),
+            },
+            {
+                text = value,
+                input_type = "string",
+                hint = _("Header value"),
+                text_type = secret and "password" or nil,
+            },
+            {
+                text = domains_str,
+                input_type = "string",
+                hint = _("Domains (comma-separated, empty = inherit allowlist)"),
+            },
+        },
+        buttons = {
+            {
+                {
+                    text = _("Cancel"),
+                    id = "close",
+                    callback = function()
+                        UIManager:close(dialog)
+                    end,
+                },
+                {
+                    text = _("Save"),
+                    is_enter_default = true,
+                    callback = function()
+                        local fields = dialog:getFields()
+                        local rule = {
+                            name = fields[1],
+                            value = fields[2],
+                            domains = parse_domains(fields[3]),
+                            enabled = enabled,
+                            secret = secret,
+                        }
+
+                        local ok, err = header_rules.validate_rule(rule)
+                        if not ok then
+                            UIManager:show(InfoMessage:new{
+                                text = err,
+                                timeout = 3,
+                            })
+                            return
+                        end
+
+                        if is_new then
+                            config.addCustomHeader(rule)
+                        else
+                            config.updateCustomHeader(index, rule)
+                        end
+                        UIManager:close(dialog)
+                        if touchmenu_instance then
+                            touchmenu_instance:updateItems()
+                        end
+                    end,
+                },
+            },
+        },
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
 end
 
 return M
