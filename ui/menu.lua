@@ -200,14 +200,12 @@ function M.addToMainMenu(plugin, menu_items)
                     log_viewer.show()
                 end,
             },
-            -- Test connection (stub)
+            -- Test connection
             {
                 text = _("Test connection"),
                 keep_menu_open = true,
                 callback = function()
-                    UIManager:show(InfoMessage:new{
-                        text = _("Not implemented yet"),
-                    })
+                    require("ui.test_connection").show()
                 end,
             },
             -- About
