@@ -1,19 +1,24 @@
---[[-- Monkey-patch `socket.http` and `ssl.https` to inject CF Access headers.
+-- SPDX-License-Identifier: MIT
+--[[-- Monkey-patch `socket.http` and `ssl.https` to inject CF Access headers
+and user-defined custom headers.
 
 Installs wrappers around `socket.http.request` and `ssl.https.request` that
 inject `CF-Access-Client-Id` / `CF-Access-Client-Secret` headers for
-allowlisted hosts. The wrappers read configuration on every call so that
-toggling enable/disable, editing credentials, or changing the allowlist takes
+allowlisted hosts, followed by any user-defined custom header rules.
+
+The wrappers read configuration on every call so that toggling enable/disable,
+editing credentials, changing the allowlist, or editing custom rules takes
 effect immediately without a restart.
 
-When disabled or credentials are empty, the wrappers are a perfect no-op:
-arguments and return values pass through unchanged.
+When disabled or credentials are empty, the CF Access wrappers are a perfect
+no-op. Custom header rules are evaluated independently.
 
 @module koplugin.cloudflareaccess.hooks
 --]]
 
 local log = require("lib.log")
 local url_match = require("lib.url_match")
+local header_rules = require("lib.header_rules")
 
 local M = {}
 
@@ -21,27 +26,59 @@ local installed = false
 local orig_http_request
 local orig_https_request
 
---- Check whether a CF Access header is already present (case-insensitive).
+--- Check whether a header is already present (case-insensitive).
 -- @tparam table headers the request headers table
--- @string canonical the canonical header name (e.g. "CF-Access-Client-Id")
+-- @string name the header name to check
 -- @treturn boolean true if the header is already set
-local function has_header(headers, canonical)
+local function has_header(headers, name)
     if type(headers) ~= "table" then
         return false
     end
-    return headers[canonical] ~= nil
-        or headers[canonical:lower()] ~= nil
+    return headers[name] ~= nil
+        or headers[name:lower()] ~= nil
 end
 
 --- Inject CF Access headers into a table-form request if needed.
 -- Never overwrites headers the caller already set.
-local function inject_headers(req, client_id, client_secret)
+local function inject_cf_headers(req, client_id, client_secret)
     req.headers = req.headers or {}
     if not has_header(req.headers, "CF-Access-Client-Id") then
         req.headers["CF-Access-Client-Id"] = client_id
     end
     if not has_header(req.headers, "CF-Access-Client-Secret") then
         req.headers["CF-Access-Client-Secret"] = client_secret
+    end
+end
+
+--- Inject custom header rules into a table-form request.
+-- Applied after CF Access. Caller-supplied and CF Access headers are never
+-- overwritten. Later rules with the same name overwrite earlier ones.
+-- @tparam table req the request table (mutated)
+-- @tparam table custom_headers array of rule tables
+-- @string host the request hostname
+-- @tparam table global_domains the global CF Access allowlist
+local function inject_custom_headers(req, custom_headers, host, global_domains)
+    if type(custom_headers) ~= "table" then return end
+    req.headers = req.headers or {}
+    -- Track header names set by custom rules (so later rules can overwrite
+    -- earlier ones, but never caller or CF Access headers)
+    local custom_set = {}
+    for _, rule in ipairs(custom_headers) do
+        if rule.enabled and header_rules.applies(rule, host, global_domains) then
+            if has_header(req.headers, rule.name) and not custom_set[rule.name:lower()] then
+                -- Header was set by caller or CF Access — do not overwrite
+                log.dbg("suppressed rule %q (caller or CF Access already set) for host=%s",
+                    rule.name, host)
+            else
+                if custom_set[rule.name:lower()] then
+                    log.dbg("suppressed earlier rule %q (overwritten by later rule) for host=%s",
+                        rule.name, host)
+                end
+                req.headers[rule.name] = rule.value
+                custom_set[rule.name:lower()] = true
+                log.dbg("applied rule %q for host=%s", rule.name, host)
+            end
+        end
     end
 end
 
@@ -56,45 +93,71 @@ local function log_response(host, path, code, headers)
     end
 end
 
+--- Extract path from a URL string.
+local function get_path(url)
+    local parsed = require("socket.url").parse(url or "")
+    if parsed and parsed.path and parsed.path ~= "" then
+        return parsed.path
+    end
+    return "/"
+end
+
+--- Apply all header injections (CF Access + custom) to a table-form request.
+-- This is the shared code path for both table-form and promoted string-form.
+local function apply_headers(req, config, host)
+    local domains = config.domains or {}
+
+    -- 1. CF Access headers (if enabled and host matches)
+    local cf_active = false
+    if config.enabled
+       and config.client_id and config.client_id ~= ""
+       and config.client_secret and config.client_secret ~= ""
+       and url_match.is_allowed(host, domains) then
+        inject_cf_headers(req, config.client_id, config.client_secret)
+        log.dbg("injected CF Access for host=%s path=%s", host, get_path(req.url))
+        cf_active = true
+    end
+
+    -- 2. Custom header rules (applied after CF Access)
+    inject_custom_headers(req, config.custom_headers, host, domains)
+
+    return cf_active
+end
+
 --- Create a wrapper around an original request function.
 -- @func orig the original `socket.http.request` or `ssl.https.request`
 -- @func get_config closure returning the current config table
 local function wrap(orig, get_config)
     return function(req, body)
         local config = get_config()
-
-        -- Perfect no-op when disabled or credentials are empty
-        if not config.enabled
-           or config.client_id == nil or config.client_id == ""
-           or config.client_secret == nil or config.client_secret == "" then
-            return orig(req, body)
-        end
-
-        local domains = config.domains or {}
+        local host
 
         if type(req) == "table" then
-            local host = url_match.get_host(req.url)
-            local path = "/"
-            local parsed = require("socket.url").parse(req.url or "")
-            if parsed and parsed.path and parsed.path ~= "" then
-                path = parsed.path
-            end
-            if url_match.is_allowed(host, domains) then
-                inject_headers(req, config.client_id, config.client_secret)
-                log.dbg("injected for host=%s path=%s", host, path)
-                local ok, code, headers = orig(req, body)
-                log_response(host, path, code, headers)
-                return ok, code, headers
-            else
-                log.dbg("skip host=%s (not in allowlist)", host or "(no host)")
-                return orig(req, body)
-            end
+            host = url_match.get_host(req.url)
+            apply_headers(req, config, host)
+            local ok, code, headers = orig(req, body)
+            log_response(host, get_path(req.url), code, headers)
+            return ok, code, headers
         elseif type(req) == "string" then
-            local host = url_match.get_host(req)
-            if url_match.is_allowed(host, domains) then
-                local parsed = require("socket.url").parse(req)
-                local path = (parsed and parsed.path and parsed.path ~= "")
-                    and parsed.path or "/"
+            host = url_match.get_host(req)
+            local domains = config.domains or {}
+
+            -- Check if any injection would apply
+            local cf_would_apply = config.enabled
+                and config.client_id and config.client_id ~= ""
+                and config.client_secret and config.client_secret ~= ""
+                and url_match.is_allowed(host, domains)
+            local custom_would_apply = false
+            if type(config.custom_headers) == "table" then
+                for _, rule in ipairs(config.custom_headers) do
+                    if rule.enabled and header_rules.applies(rule, host, domains) then
+                        custom_would_apply = true
+                        break
+                    end
+                end
+            end
+
+            if cf_would_apply or custom_would_apply then
                 -- Promote string form to table form so we can attach headers
                 local ltn12 = require("ltn12")
                 local sink_t = {}
@@ -103,10 +166,10 @@ local function wrap(orig, get_config)
                     sink = ltn12.sink.table(sink_t),
                     headers = {},
                 }
-                inject_headers(t, config.client_id, config.client_secret)
-                log.dbg("injected for host=%s path=%s (string form)", host, path)
+                apply_headers(t, config, host)
+                log.dbg("injected (string form) for host=%s path=%s", host, get_path(req))
                 local ok, code, headers = orig(t)
-                log_response(host, path, code, headers)
+                log_response(host, get_path(req), code, headers)
                 if ok == nil then
                     return nil, code, headers
                 end
@@ -123,7 +186,7 @@ end
 --- Install the HTTP/HTTPS hooks.
 -- @func get_config closure returning the current config table with fields:
 --   enabled (bool), client_id (string), client_secret (string),
---   domains (table/array of strings)
+--   domains (table), custom_headers (table)
 function M.install(get_config)
     if installed then
         return
@@ -152,6 +215,13 @@ end
 -- @treturn boolean
 function M.is_installed()
     return installed
+end
+
+--- Reset installed state (test-only).
+function M._reset_for_test()
+    installed = false
+    orig_http_request = nil
+    orig_https_request = nil
 end
 
 return M
