@@ -4,7 +4,8 @@
 
 CloudflareAccess.koplugin is a KOReader plugin that monkey-patches
 `socket.http.request` and `ssl.https.request` to inject Cloudflare Access
-service-token headers for allowlisted hosts.
+service-token headers and user-defined custom HTTP headers for allowlisted
+hosts.
 
 ## Plugin lifecycle
 
@@ -78,15 +79,22 @@ values through unchanged.
 ```
 incoming request (table or string form)
   │
-  ├─ get_config() → { enabled, client_id, client_secret, domains }
-  │
-  ├─ disabled or no creds? → pass through (no-op)
+  ├─ get_config() → { enabled, client_id, client_secret, domains,
+  │                    custom_headers }
   │
   ├─ get_host(url) → lowercase hostname
   │
-  ├─ is_allowed(host, domains)?
-  │   ├─ YES → inject headers (if not already set), call original
-  │   └─ NO  → call original unchanged
+  ├─ 1. CF Access injection (if enabled + creds set + host matches)
+  │     └─ inject CF-Access-Client-Id / CF-Access-Client-Secret
+  │        (never overwrite caller-supplied headers)
+  │
+  ├─ 2. Custom header rules (applied after CF Access)
+  │     └─ for each enabled rule where applies(rule, host, domains):
+  │          └─ inject rule.name = rule.value
+  │             (never overwrite caller or CF Access headers;
+  │              later rules overwrite earlier ones with same name)
+  │
+  ├─ disabled + no custom rules apply? → pass through (no-op)
   │
   └─ log result (host, path, status, cf-ray) at dbg level
 ```
@@ -104,10 +112,32 @@ preserve the string-form contract.
 
 ### Header collision
 
-The wrapper never overwrites `CF-Access-Client-Id` or
-`CF-Access-Client-Secret` headers that the caller already set. It checks
-both canonical (`CF-Access-Client-Id`) and lowercased
-(`cf-access-client-id`) keys.
+Headers are injected in a strict priority order:
+
+1. **Caller-supplied headers** — never overwritten. The wrapper checks
+   both canonical (`CF-Access-Client-Id`) and lowercased
+   (`cf-access-client-id`) keys.
+2. **CF Access credentials** — `CF-Access-Client-Id` /
+   `CF-Access-Client-Secret`, injected if enabled and host matches.
+3. **Custom header rules** — applied in array order. Later rules with the
+   same name overwrite earlier custom rules, but never overwrite caller
+   or CF Access headers. The wrapper tracks which names were set by
+   custom rules (via a `custom_set` table) to distinguish them from
+   caller/CF Access headers.
+
+### Custom header rule matching
+
+Each custom rule is evaluated via `header_rules.applies(rule, host,
+global_domains)`:
+
+1. Compute `effective_domains`: if the rule has its own non-empty
+   `domains` array, use that; otherwise fall back to `global_domains`.
+2. Call `url_match.is_allowed(host, effective_domains)`.
+3. If the rule is disabled, skip it entirely.
+
+This means a rule with empty per-rule domains inherits the global
+allowlist, and a rule with empty per-rule domains + empty global
+allowlist matches every host (the unsafe fallback, with a warning).
 
 ## Allowlist matching algorithm
 
@@ -196,3 +226,5 @@ zero cost per call.
   through that path are not intercepted.
 - **No per-request UI:** Hooking is silent except in logs, by design.
 - **Service tokens only:** No mTLS, no JWT-based Access.
+- **Custom header values stored in plain text:** Same as CF Access
+  credentials. The `secret` flag controls UI masking only, not encryption.

@@ -1,6 +1,8 @@
 # Cloudflare Access
 
-A KOReader plugin that injects [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/identity/service-tokens/) service-token headers (`CF-Access-Client-Id`, `CF-Access-Client-Secret`) into outgoing HTTP/HTTPS requests, with a configurable hostname allowlist and an in-app log viewer for troubleshooting.
+A KOReader plugin that injects [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/identity/service-tokens/) service-token headers (`CF-Access-Client-Id`, `CF-Access-Client-Secret`) and user-defined custom HTTP headers into outgoing HTTP/HTTPS requests, with a configurable hostname allowlist and an in-app log viewer for troubleshooting.
+
+> **Despite the name**, this plugin also supports arbitrary custom HTTP headers — not just Cloudflare Access. See [Custom header rules](#custom-header-rules) below.
 
 ## What it does
 
@@ -29,6 +31,7 @@ Open **Settings → Network → Cloudflare Access** to:
 - **Enable/disable** the plugin.
 - **Set Client ID and Client Secret** — paste your Cloudflare Access service-token credentials.
 - **Manage allowed domains** — add or remove hostnames that should receive the headers.
+- **Custom header rules** — define arbitrary HTTP headers (e.g. `Authorization`, `X-Api-Key`) with per-rule domain scoping and secret masking. See [Custom header rules](#custom-header-rules) below.
 - **Set the log level** — Off / Warn / Info / Debug.
 - **View logs** — inspect recent plugin activity in-app.
 - **Test connection** — probe a URL and see the HTTP status, cf-ray, and redirect info.
@@ -46,6 +49,36 @@ Settings are stored in `koreader/settings/cloudflareaccess.lua` on your device.
 **Allowlist mode** (recommended): Add the apex domains of your Cloudflare-protected services. A domain like `example.com` matches `example.com` and all subdomains (`*.example.com`). Headers are only sent to matching hosts.
 
 **Global mode** (discouraged): If the allowlist is empty, the plugin injects headers into every outgoing request — matching the original patch's behavior. This is convenient for quick setup but risks leaking your service token to third-party hosts. A one-time warning is shown when this mode is active, and a ⚠ marker appears in the menu.
+
+## Custom header rules
+
+In addition to Cloudflare Access service tokens, the plugin supports **user-defined custom HTTP header rules**. Each rule specifies:
+
+- **Header name** — any valid HTTP header name (RFC 7230 token, e.g. `X-Api-Key`, `Authorization`).
+- **Header value** — the string value to inject.
+- **Domains** — optional per-rule hostname scoping. If empty, the rule inherits the global allowlist. If both are empty, the rule matches every host (with a warning).
+- **Enabled** — toggle the rule on/off without deleting it.
+- **Secret** — when `true` (default), the value is masked in the UI (`abcd…wxyz`) and never logged. When `false`, the value is shown in the UI but still never logged.
+
+### Header injection order
+
+When multiple sources define the same header, the first one wins:
+
+1. **Caller-supplied headers** — headers already set by KOReader code are never overwritten.
+2. **CF Access credentials** — `CF-Access-Client-Id` / `CF-Access-Client-Secret` (if enabled and host matches).
+3. **Custom rules** — applied in order. Later rules with the same name overwrite earlier ones, but never overwrite caller or CF Access headers.
+
+### Use cases
+
+| Use case | Example header |
+|----------|---------------|
+| Authelia / Authentik | `Authorization: Basic ...` or custom auth header |
+| Google IAP | `X-Goog-Iap-Jwt-Assertion` |
+| Tailscale Funnel | `X-Tailscale-Auth` |
+| Static API key | `X-Api-Key: your-key` |
+| Custom reverse proxy | `X-Proxy-Auth: token` |
+
+See [docs/custom-headers.md](docs/custom-headers.md) for detailed setup examples.
 
 ## Security notes
 
@@ -96,8 +129,9 @@ Use the **Log file** button in the viewer to see the absolute path on your devic
 | Configuration | Edit code constants | In-app UI |
 | Host filtering | Allowlist (hardcoded) | Allowlist (editable at runtime) |
 | Empty allowlist | Not applicable | Global mode with warning |
+| Custom headers | No | Yes — arbitrary rules with per-rule scoping |
 | Logging | `logger.info` only | Leveled ring buffer + in-app viewer |
-| Test connection | No | Yes |
+| Test connection | No | Yes (shows injected header names) |
 | Enable/disable | Restart required | Live toggle |
 
 Upstream patch: [crocodilestick/koreader-cloudflare-auth-patch](https://github.com/crocodilestick/koreader-cloudflare-auth-patch)

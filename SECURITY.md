@@ -2,16 +2,18 @@
 
 ## Threat model
 
-This plugin handles Cloudflare Access service tokens, which are sensitive
-credentials. The primary threats are:
+This plugin handles Cloudflare Access service tokens and user-defined
+custom header values, which are sensitive credentials. The primary
+threats are:
 
-1. **Token leakage to third-party hosts** — If headers are injected into
-   requests to hosts that are not Cloudflare-protected, the service token
-   is exposed to those hosts' operators.
-2. **Token exposure via logs** — If secrets are logged, they could be
-   visible in `crash.log` or the in-app log viewer.
-3. **Token storage on device** — The token is stored in a plain-text Lua
-   settings file on the device.
+1. **Token/value leakage to third-party hosts** — If headers are injected
+   into requests to hosts that are not intended to receive them, the
+   service token or custom header value is exposed to those hosts'
+   operators.
+2. **Token/value exposure via logs** — If secrets are logged, they could
+   be visible in `crash.log` or the in-app log viewer.
+3. **Token/value storage on device** — Credentials are stored in a
+   plain-text Lua settings file on the device.
 
 ## Operating modes
 
@@ -43,6 +45,25 @@ for onboarding convenience.
 shows a one-time warning dialog and a persistent ⚠ marker when global
 mode is active.
 
+### Custom header rules
+
+Custom header rules follow the same allowlist semantics as CF Access
+headers. Each rule can optionally specify its own per-rule domain list;
+if empty, the rule inherits the global allowlist. If both the per-rule
+domains and the global allowlist are empty, the rule matches every host
+— triggering a separate one-time warning.
+
+**Risks specific to custom rules:**
+- Custom header values (e.g. API keys, bearer tokens) are stored in
+  plain text alongside CF Access credentials.
+- A rule with `secret = false` displays its value in the UI (list view
+  and edit dialog) but still never logs it. This is intentional for
+  non-sensitive headers (e.g. `X-Client-Name`) but should not be used
+  for credentials.
+- The `redact()` function in the log facade masks long hex/base64
+  strings as defense in depth, but short values (e.g. `Bearer abc123`)
+  are not auto-redacted. The plugin never logs header values regardless.
+
 ## What data is stored where
 
 | Data | Location | Format | Persisted? |
@@ -50,6 +71,7 @@ mode is active.
 | Client ID | `koreader/settings/cloudflareaccess.lua` | Plain text | Yes |
 | Client Secret | `koreader/settings/cloudflareaccess.lua` | Plain text | Yes |
 | Allowed domains | `koreader/settings/cloudflareaccess.lua` | Plain text | Yes |
+| Custom header rules (name, value, domains, enabled, secret) | `koreader/settings/cloudflareaccess.lua` | Plain text | Yes |
 | Log entries (ring buffer) | In-memory only | Redacted | No |
 | Forwarded log entries | `koreader/crash.log` | Redacted | Yes (KOReader's log) |
 
@@ -74,8 +96,9 @@ either KOReader's logger or the in-memory ring buffer:
 - Base64-ish strings ≥ 40 characters → `<redacted>`
 
 This is defense in depth. The plugin never intentionally logs secrets,
-Authorization headers, or full response bodies. Only host, path, HTTP
-status, and `cf-ray` are logged.
+Authorization headers, custom header values, or full response bodies.
+Only host, path, HTTP status, header names (not values), and `cf-ray`
+are logged.
 
 ## What this plugin does NOT do
 
