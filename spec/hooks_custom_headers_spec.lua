@@ -262,4 +262,86 @@ describe("hooks custom headers integration", function()
             assert.same({}, captured_requests[1].headers)
         end)
     end)
+
+    describe("redaction sanity", function()
+        local log
+
+        before_each(function()
+            log = require("lib.log")
+            log.setLevel("dbg")
+            log.clear()
+        end)
+
+        it("never logs custom header values", function()
+            local secret_value = "super-secret-token-value-12345"
+            hooks.install(function()
+                return {
+                    enabled = false,
+                    client_id = "",
+                    client_secret = "",
+                    domains = {},
+                    custom_headers = {
+                        make_rule({ name = "X-Secret", value = secret_value, domains = {} }),
+                    },
+                }
+            end)
+
+            mock_http.request({ url = "https://example.com/path" })
+
+            -- Check all log entries — the secret value must not appear
+            local entries = log.getEntries()
+            for _, entry in ipairs(entries) do
+                assert.is_nil(entry.message:find(secret_value, 1, true),
+                    "Header value leaked into log: " .. entry.message)
+            end
+        end)
+
+        it("never logs CF Access credentials", function()
+            local client_secret = "abcdef0123456789abcdef0123456789"
+            hooks.install(function()
+                return {
+                    enabled = true,
+                    client_id = "abcdef0123456789abcdef0123456789",
+                    client_secret = client_secret,
+                    domains = { "example.com" },
+                    custom_headers = {},
+                }
+            end)
+
+            mock_http.request({ url = "https://example.com/path" })
+
+            local entries = log.getEntries()
+            for _, entry in ipairs(entries) do
+                assert.is_nil(entry.message:find(client_secret, 1, true),
+                    "Client secret leaked into log: " .. entry.message)
+            end
+        end)
+
+        it("logs rule names but not values", function()
+            hooks.install(function()
+                return {
+                    enabled = false,
+                    client_id = "",
+                    client_secret = "",
+                    domains = {},
+                    custom_headers = {
+                        make_rule({ name = "X-Logged-Name", value = "secret-value", domains = {} }),
+                    },
+                }
+            end)
+
+            mock_http.request({ url = "https://example.com/path" })
+
+            local entries = log.getEntries()
+            local found_name = false
+            for _, entry in ipairs(entries) do
+                if entry.message:find("X-Logged-Name", 1, true) then
+                    found_name = true
+                end
+                assert.is_nil(entry.message:find("secret-value", 1, true),
+                    "Value leaked into log: " .. entry.message)
+            end
+            assert.is_true(found_name, "Rule name was not logged")
+        end)
+    end)
 end)
