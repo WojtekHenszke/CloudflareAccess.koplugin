@@ -2,7 +2,8 @@
 
 Performs an actual GET request via socket.http/ssl.https (our own hooks
 inject the CF Access headers if the host matches the allowlist) and shows
-the HTTP status, cf-ray, redirect location, and contextual hints.
+the HTTP status, cf-ray, redirect location, injected header names, and
+contextual hints.
 
 @module koplugin.cloudflareaccess.ui.test_connection
 --]]
@@ -14,9 +15,41 @@ local _ = require("gettext")
 local T = require("ffi/util").template
 
 local config = require("config")
+local header_rules = require("lib.header_rules")
 local log = require("lib.log")
+local url_match = require("lib/url_match")
 
 local M = {}
+
+--- Compute which headers would be injected for a given host.
+-- Returns header names only (never values) for display.
+-- @string host the hostname to check
+-- @treturn table array of {source, name} pairs
+local function compute_injected_headers(host)
+    local snap = config.getSnapshot()
+    local domains = snap.domains or {}
+    local injected = {}
+
+    -- CF Access headers
+    if snap.enabled
+       and snap.client_id and snap.client_id ~= ""
+       and snap.client_secret and snap.client_secret ~= ""
+       and url_match.is_allowed(host, domains) then
+        table.insert(injected, { source = "CF Access", name = "CF-Access-Client-Id" })
+        table.insert(injected, { source = "CF Access", name = "CF-Access-Client-Secret" })
+    end
+
+    -- Custom header rules
+    if type(snap.custom_headers) == "table" then
+        for _, rule in ipairs(snap.custom_headers) do
+            if rule.enabled and header_rules.applies(rule, host, domains) then
+                table.insert(injected, { source = "custom", name = rule.name })
+            end
+        end
+    end
+
+    return injected
+end
 
 --- Perform a GET request and return a human-readable result string.
 -- @string url the URL to probe
@@ -54,6 +87,20 @@ local function probe(url)
 
     if location then
         table.insert(lines, T(_("Redirect: %1"), location))
+    end
+
+    -- Show which headers were injected (names only, never values)
+    local host = url_match.get_host(url)
+    local injected = compute_injected_headers(host)
+    if #injected > 0 then
+        table.insert(lines, "")
+        table.insert(lines, _("Injected headers:"))
+        for _, h in ipairs(injected) do
+            table.insert(lines, T("  %1: %2", h.source, h.name))
+        end
+    else
+        table.insert(lines, "")
+        table.insert(lines, _("No headers injected (host not in allowlist or no rules match)."))
     end
 
     -- Contextual hints
