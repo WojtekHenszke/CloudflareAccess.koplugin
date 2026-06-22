@@ -171,6 +171,19 @@ function M.acknowledgeEmptyAllowlistWarning()
 end
 
 ----------------------------------------------------------------------
+-- Custom-headers empty-allowlist warning acknowledgement
+----------------------------------------------------------------------
+
+function M.hasAcknowledgedEmptyAllowlistCustomWarning()
+    return get_settings():isTrue("warned_empty_allowlist_custom")
+end
+
+function M.acknowledgeEmptyAllowlistCustomWarning()
+    get_settings():saveSetting("warned_empty_allowlist_custom", true)
+    save()
+end
+
+----------------------------------------------------------------------
 -- Log level
 ----------------------------------------------------------------------
 
