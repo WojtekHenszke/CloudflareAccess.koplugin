@@ -194,14 +194,24 @@ because `evilwojtasord.com` does not end with `.wojtasord.com`.
 
 ### Redaction
 
-Both destinations receive redacted messages. The `redact()` function
-masks:
-- Hex strings ≥ 32 characters (CF client IDs)
-- Base64-ish strings ≥ 40 characters (CF client secrets)
+Both destinations receive redacted messages. The `redact()` function masks
+any run of 32+ characters matching `[A-Za-z0-9+/=_-]` (hex, base64,
+token values) with the literal placeholder `<redacted>`. The placeholder
+contains `<` and `>`, which are outside the match charset, so it is never
+re-redacted by a second pass. This is a single-pass, unified-threshold
+replacement for the original two-pass design (separate hex and base64
+passes with different thresholds).
 
-This is defense in depth: even if a secret accidentally ends up in a log
-message, it is masked before reaching either `crash.log` or the ring
-buffer.
+### Skip-line throttling
+
+When the plugin is in no-op mode for a given host (not in allowlist), the
+string-form wrapper emits a single `skip host=X (not in allowlist)` line
+per unique host. Consecutive identical skip lines are suppressed: the
+wrapper tracks the last-skipped host and a repeat counter. When the host
+changes, the suppressed count is flushed as
+`skip host=X (suppressed N times)`. The skip cache is also reset whenever
+a request triggers header injection, preserving context boundaries for
+the reader.
 
 ### Log levels
 
