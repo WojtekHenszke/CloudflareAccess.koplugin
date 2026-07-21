@@ -42,50 +42,55 @@ end
 --- Internal: create and show the TextViewer.
 function M._show_viewer()
     local viewer
-    local buttons = {
+    -- Device.input.setClipboardText is available on Android and some desktop
+    -- builds only.  Feature-detect it so we never crash on devices that
+    -- omit the clipboard write API (koreader/frontend/device/input.lua).
+    local has_clipboard = Device.input and Device.input.setClipboardText
+    local button_row = {
         {
-            {
-                text = _("Refresh"),
-                callback = function()
-                    UIManager:close(viewer)
-                    M._show_viewer()
-                end,
-            },
-            {
-                text = _("Clear"),
-                callback = function()
-                    UIManager:show(ConfirmBox:new{
-                        text = _("Clear all log entries?"),
-                        ok_text = _("Clear"),
-                        ok_callback = function()
-                            log.clear()
-                            UIManager:close(viewer)
-                            M._show_viewer()
-                        end,
-                    })
-                end,
-            },
-            {
-                text = _("Copy"),
-                callback = function()
-                    Device.input.setClipboardText(format_entries())
-                    UIManager:show(InfoMessage:new{
-                        text = _("Logs copied to clipboard."),
-                        timeout = 2,
-                    })
-                end,
-            },
-            {
-                text = _("Log file"),
-                callback = function()
-                    local log_path = DataStorage:getDataDir() .. "/crash.log"
-                    UIManager:show(InfoMessage:new{
-                        text = T(_("Full log file:\n%1"), log_path),
-                    })
-                end,
-            },
+            text = _("Refresh"),
+            callback = function()
+                UIManager:close(viewer)
+                M._show_viewer()
+            end,
+        },
+        {
+            text = _("Clear"),
+            callback = function()
+                UIManager:show(ConfirmBox:new{
+                    text = _("Clear all log entries?"),
+                    ok_text = _("Clear"),
+                    ok_callback = function()
+                        log.clear()
+                        UIManager:close(viewer)
+                        M._show_viewer()
+                    end,
+                })
+            end,
         },
     }
+    if has_clipboard then
+        button_row[#button_row + 1] = {
+            text = _("Copy"),
+            callback = function()
+                Device.input.setClipboardText(format_entries())
+                UIManager:show(InfoMessage:new{
+                    text = _("Logs copied to clipboard."),
+                    timeout = 2,
+                })
+            end,
+        }
+    end
+    button_row[#button_row + 1] = {
+        text = _("Log file"),
+        callback = function()
+            local log_path = DataStorage:getDataDir() .. "/crash.log"
+            UIManager:show(InfoMessage:new{
+                text = T(_("Full log file:\n%1"), log_path),
+            })
+        end,
+    }
+    local buttons = { button_row }
 
     viewer = TextViewer:new{
         title = _("Cloudflare Access logs"),

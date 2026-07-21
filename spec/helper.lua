@@ -40,8 +40,23 @@ end
 package.preload["ui/widget/multiinputdialog"] = function()
     return { new = function() return {} end }
 end
+local textviewer_stub = {}
+package.preload["ui/widget/textviewer"] = function()
+    return {
+        new = function(_, opts)
+            textviewer_stub.last_opts = opts
+            return {}
+        end,
+    }
+end
 package.preload["ui/uimanager"] = function()
-    return { show = function() end }
+    return { show = function() end, close = function() end }
+end
+
+-- Stub device: mutable shared table so specs can toggle clipboard capability.
+local device_stub = {}
+package.preload["device"] = function()
+    return device_stub
 end
 
 -- Stub datastorage: return a temp-like path.
@@ -83,3 +98,5 @@ end
 -- Expose for specs that need to verify forwarding or pre-populate settings.
 _G._test_log_calls = log_calls
 _G._test_settings_data = settings_data
+_G._test_device_stub = device_stub
+_G._test_textviewer_stub = textviewer_stub
