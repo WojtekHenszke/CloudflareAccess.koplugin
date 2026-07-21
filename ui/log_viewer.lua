@@ -84,6 +84,9 @@ function M._show_viewer()
     button_row[#button_row + 1] = {
         text = _("Log file"),
         callback = function()
+            -- getDataDir() returns the KOReader data directory for the current platform
+            -- (e.g. /mnt/onboard/.adds/koreader/ on Kobo, koreader/ on Android)
+            -- see frontend/datastorage.lua in the KOReader source for platform mapping
             local log_path = DataStorage:getDataDir() .. "/crash.log"
             UIManager:show(InfoMessage:new{
                 text = T(_("Full log file:\n%1"), log_path),

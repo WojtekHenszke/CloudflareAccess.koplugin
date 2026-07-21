@@ -185,8 +185,9 @@ because `evilwojtasord.com` does not end with `.wojtasord.com`.
 
 ### Why two destinations?
 
-- **KOReader's logger** → writes to `crash.log` on disk. Useful for
-  debugging via SSH/USB. The `[CFAccess]` prefix makes plugin entries
+- **KOReader's logger** → writes to `crash.log` inside the KOReader data
+  directory (resolved at runtime by `DataStorage:getDataDir()`). Useful
+  for debugging via SSH/USB. The `[CFAccess]` prefix makes plugin entries
   easy to grep.
 - **Ring buffer** → in-memory, shown in the in-app viewer. No SSH needed.
   Volatile by design: secrets-adjacent metadata (hostnames, paths) does

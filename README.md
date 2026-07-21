@@ -112,12 +112,12 @@ The log level defaults to **Warn**. Switch to **Debug** while reproducing an iss
 
 ### Finding the full log file
 
-The in-app viewer shows the plugin's ring buffer (volatile, not persisted). For the full KOReader log, the file is at:
+The in-app viewer shows the plugin's ring buffer (volatile, not persisted). For the full KOReader log, the file is at `crash.log` inside the KOReader data directory. The canonical path is resolved at runtime by `DataStorage:getDataDir()`. Common platform-specific paths:
 
-- **Android:** `koreader/crash.log`
 - **Kobo:** `.adds/koreader/crash.log`
 - **Kindle:** `linkss/koreader/crash.log` (or wherever KOReader is installed)
-- **Desktop/emulator:** `koreader/crash.log` in the KOReader data directory
+- **Android:** `koreader/crash.log`
+- **Desktop/emulator:** `koreader/crash.log` (next to the KOReader binary)
 
 Use the **Log file** button in the viewer to see the absolute path on your device.
 
