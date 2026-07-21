@@ -23,6 +23,7 @@ local CloudflareAccess = WidgetContainer:extend{
 }
 
 function CloudflareAccess:init()
+    config.migrate()
     -- Configure logging from persisted settings
     log.setLevel(config.getLogLevel())
     log.setCapacity(config.getLogCapacity())
