@@ -16,6 +16,7 @@ local _ = require("gettext")
 local T = require("ffi/util").template
 
 local config = require("config")
+local editor_internal = require("lib.editor_internal")
 local header_rules = require("lib.header_rules")
 
 local M = {}
@@ -172,11 +173,8 @@ function M.editRule(touchmenu_instance, index)
         if not existing then return end
     end
 
-    local name = existing and existing.name or ""
-    local value = existing and existing.value or ""
-    local domains_str = existing and table.concat(existing.domains, ", ") or ""
-    local secret = existing and existing.secret or true
-    local enabled = existing and existing.enabled or true
+    local name, value, domains, enabled, secret = editor_internal.coerce_defaults(existing)
+    local domains_str = table.concat(domains, ", ")
 
     local dialog
     dialog = MultiInputDialog:new{
