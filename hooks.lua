@@ -107,7 +107,8 @@ end
 
 --- Apply all header injections (CF Access + custom) to a table-form request.
 -- This is the shared code path for both table-form and promoted string-form.
-local function apply_headers(req, config, host)
+-- @tparam table|nil skip_cache table with host and count fields (resets on inject)
+local function apply_headers(req, config, host, skip_cache)
     local domains = config.domains or {}
 
     -- 1. CF Access headers (if enabled and host matches)
@@ -126,6 +127,10 @@ local function apply_headers(req, config, host)
 
     if cf_injected or custom_count > 0 then
         log.dbg("applied: host=%s cf=%s custom=%d", host, cf_injected and "yes" or "no", custom_count)
+        if skip_cache then
+            skip_cache.host = nil
+            skip_cache.count = 0
+        end
     end
 end
 
@@ -133,13 +138,14 @@ end
 -- @func orig the original `socket.http.request` or `ssl.https.request`
 -- @func get_config closure returning the current config table
 local function wrap(orig, get_config)
+    local skip_cache = { host = nil, count = 0 }
     return function(req, body)
         local config = get_config()
         local host
 
         if type(req) == "table" then
             host = url_match.get_host(req.url)
-            apply_headers(req, config, host)
+            apply_headers(req, config, host, skip_cache)
             local ok, code, headers, status = orig(req, body)
             log_response(host, get_path(req.url), code, headers)
             return ok, code, headers, status
@@ -179,7 +185,7 @@ local function wrap(orig, get_config)
                         t.headers["Content-Type"] = "application/x-www-form-urlencoded"
                     end
                 end
-                apply_headers(t, config, host)
+                apply_headers(t, config, host, skip_cache)
                 log.dbg("injected (string form) for host=%s path=%s", host, get_path(req))
                 local ok, code, headers, status = orig(t)
                 log_response(host, get_path(req), code, headers)
@@ -188,7 +194,16 @@ local function wrap(orig, get_config)
                 end
                 return table.concat(sink_t), code, headers, status
             else
-                log.dbg("skip host=%s (not in allowlist)", host or "(no host)")
+                if host == skip_cache.host then
+                    skip_cache.count = skip_cache.count + 1
+                else
+                    if skip_cache.count > 0 then
+                        log.dbg("skip host=%s (suppressed %d times)", skip_cache.host, skip_cache.count)
+                        skip_cache.count = 0
+                    end
+                    skip_cache.host = host
+                    log.dbg("skip host=%s (not in allowlist)", host or "(no host)")
+                end
                 return orig(req, body)
             end
         end
