@@ -41,7 +41,7 @@ local function display_domains(rule)
         if #global == 0 then
             return _("all hosts")
         end
-        return _("inherits allowlist")
+        return T(_("inherits global (%1)"), #global)
     end
     return table.concat(rule.domains, ", ")
 end
@@ -247,5 +247,7 @@ function M.editRule(touchmenu_instance, index)
     UIManager:show(dialog)
     dialog:onShowKeyboard()
 end
+
+M._display_domains = display_domains
 
 return M
