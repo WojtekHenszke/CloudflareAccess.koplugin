@@ -135,9 +135,9 @@ local function wrap(orig, get_config)
         if type(req) == "table" then
             host = url_match.get_host(req.url)
             apply_headers(req, config, host)
-            local ok, code, headers = orig(req, body)
+            local ok, code, headers, status = orig(req, body)
             log_response(host, get_path(req.url), code, headers)
-            return ok, code, headers
+            return ok, code, headers, status
         elseif type(req) == "string" then
             host = url_match.get_host(req)
             local domains = config.domains or {}
@@ -168,12 +168,12 @@ local function wrap(orig, get_config)
                 }
                 apply_headers(t, config, host)
                 log.dbg("injected (string form) for host=%s path=%s", host, get_path(req))
-                local ok, code, headers = orig(t)
+                local ok, code, headers, status = orig(t)
                 log_response(host, get_path(req), code, headers)
                 if ok == nil then
-                    return nil, code, headers
+                    return nil, code, headers, status
                 end
-                return table.concat(sink_t), code, headers
+                return table.concat(sink_t), code, headers, status
             else
                 log.dbg("skip host=%s (not in allowlist)", host or "(no host)")
                 return orig(req, body)
