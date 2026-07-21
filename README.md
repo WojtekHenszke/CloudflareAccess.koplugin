@@ -1,3 +1,5 @@
+[![CI](https://github.com/WojtekHenszke/CloudflareAccess.koplugin/actions/workflows/ci.yml/badge.svg)](https://github.com/WojtekHenszke/CloudflareAccess.koplugin/actions/workflows/ci.yml)
+
 # Cloudflare Access
 
 A KOReader plugin that injects [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/identity/service-tokens/) service-token headers (`CF-Access-Client-Id`, `CF-Access-Client-Secret`) and user-defined custom HTTP headers into outgoing HTTP/HTTPS requests, with a configurable hostname allowlist and an in-app log viewer for troubleshooting.

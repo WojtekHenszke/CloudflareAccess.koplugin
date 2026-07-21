@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: "luajit-2.1.0-beta3"
+
+      - uses: leafo/gh-actions-luarocks@v4
+
+      - name: Cache LuaRocks
+        uses: actions/cache@v4
+        with:
+          path: ~/.luarocks
+          key: luarocks-${{ runner.os }}-${{ hashFiles('.luacheckrc') }}
+
+      - name: Install Lua dependencies
+        run: |
+          luarocks install luacheck
+          luarocks install busted
+          luarocks install luasocket
+          luarocks install luasec
+          luarocks install luafilesystem
+
+      - name: Run luacheck
+        run: luacheck .
+
+      - name: Run busted
+        run: busted spec/
