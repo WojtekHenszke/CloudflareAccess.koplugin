@@ -110,12 +110,14 @@ function M.buildSubMenu()
     local headers = config.getCustomHeaders()
     local items = {}
 
-    for i, rule in ipairs(headers) do
-        local enabled_mark = rule.enabled and "●" or "○"
+    for i, _ in ipairs(headers) do
         items[#items + 1] = {
             text_func = function()
+                local r = config.getCustomHeader(i)
+                if not r then return "(deleted)" end
+                local mark = r.enabled and "●" or "○"
                 return T("%1 %2: %3 (%4)",
-                    enabled_mark, rule.name, display_value(rule), display_domains(rule))
+                    mark, r.name, display_value(r), display_domains(r))
             end,
             enabled_func = function() return true end,
             sub_item_table_func = function()

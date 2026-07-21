@@ -18,6 +18,32 @@ package.preload["gettext"] = function()
     return function(s) return s end
 end
 
+-- Stub ffi/util: provide template() for the editor.
+package.preload["ffi/util"] = function()
+    return {
+        template = function(s, ...)
+            local args = { ... }
+            return (s:gsub("%%(%d+)", function(d)
+                return tostring(args[tonumber(d)] or "")
+            end))
+        end,
+    }
+end
+
+-- Stub UI widgets (not exercised in headless tests, just needed to load the module).
+package.preload["ui/widget/confirmbox"] = function()
+    return { new = function() return {} end }
+end
+package.preload["ui/widget/infomessage"] = function()
+    return { new = function() return {} end }
+end
+package.preload["ui/widget/multiinputdialog"] = function()
+    return { new = function() return {} end }
+end
+package.preload["ui/uimanager"] = function()
+    return { show = function() end }
+end
+
 -- Stub datastorage: return a temp-like path.
 package.preload["datastorage"] = function()
     return {
