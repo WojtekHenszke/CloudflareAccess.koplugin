@@ -344,4 +344,124 @@ describe("hooks custom headers integration", function()
             assert.is_true(found_name, "Rule name was not logged")
         end)
     end)
+
+    describe("summary log", function()
+        local log
+
+        before_each(function()
+            log = require("lib.log")
+            log.setLevel("dbg")
+            log.clear()
+            -- Force re-require hooks to get fresh apply_headers closure
+            package.loaded["hooks"] = nil
+            hooks = require("hooks")
+            hooks._reset_for_test()
+        end)
+
+        it("emits summary line when CF headers injected", function()
+            hooks.install(function()
+                return {
+                    enabled = true,
+                    client_id = "cf-id",
+                    client_secret = "cf-secret",
+                    domains = { "example.com" },
+                    custom_headers = {},
+                }
+            end)
+
+            mock_http.request({ url = "https://example.com/path" })
+
+            local entries = log.getEntries()
+            local found = false
+            for _, entry in ipairs(entries) do
+                if entry.message:find("^applied:") then
+                    found = true
+                    assert.truthy(entry.message:find("cf=yes", 1, true))
+                    assert.truthy(entry.message:find("custom=0", 1, true))
+                end
+            end
+            assert.is_true(found, "Summary log line not emitted")
+        end)
+
+        it("emits summary line when custom headers injected", function()
+            hooks.install(function()
+                return {
+                    enabled = false,
+                    client_id = "",
+                    client_secret = "",
+                    domains = {},
+                    custom_headers = {
+                        make_rule({ name = "X-Custom", value = "val", domains = {} }),
+                    },
+                }
+            end)
+
+            mock_http.request({ url = "https://example.com/path" })
+
+            local entries = log.getEntries()
+            local found = false
+            for _, entry in ipairs(entries) do
+                if entry.message:find("^applied:") then
+                    found = true
+                    assert.truthy(entry.message:find("cf=no", 1, true))
+                    assert.truthy(entry.message:find("custom=1", 1, true))
+                end
+            end
+            assert.is_true(found, "Summary log line not emitted")
+        end)
+
+        it("suppresses summary line on no-op passthrough", function()
+            hooks.install(function()
+                return {
+                    enabled = false,
+                    client_id = "",
+                    client_secret = "",
+                    domains = {},
+                    custom_headers = {},
+                }
+            end)
+
+            mock_http.request({ url = "https://example.com/path" })
+
+            local entries = log.getEntries()
+            for _, entry in ipairs(entries) do
+                assert.is_nil(entry.message:find("^applied:"),
+                    "Summary line emitted on no-op: " .. entry.message)
+            end
+        end)
+    end)
+
+    describe("empty allowlist install warning", function()
+        local log
+
+        before_each(function()
+            log = require("lib.log")
+            log.setLevel("warn")
+            log.clear()
+            package.loaded["hooks"] = nil
+            hooks = require("hooks")
+            hooks._reset_for_test()
+        end)
+
+        it("warns when installed with enabled and empty allowlist", function()
+            hooks.install(function()
+                return {
+                    enabled = true,
+                    client_id = "cf-id",
+                    client_secret = "cf-secret",
+                    domains = {},
+                    custom_headers = {},
+                }
+            end)
+
+            local entries = log.getEntries()
+            local found = false
+            for _, entry in ipairs(entries) do
+                if entry.level == "warn" and entry.message:find("empty allowlist", 1, true) then
+                    found = true
+                end
+            end
+            assert.is_true(found, "Empty allowlist warning not emitted")
+        end)
+    end)
 end)

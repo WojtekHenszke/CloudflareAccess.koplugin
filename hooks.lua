@@ -58,11 +58,12 @@ end
 -- @string host the request hostname
 -- @tparam table global_domains the global CF Access allowlist
 local function inject_custom_headers(req, custom_headers, host, global_domains)
-    if type(custom_headers) ~= "table" then return end
+    if type(custom_headers) ~= "table" then return 0 end
     req.headers = req.headers or {}
     -- Track header names set by custom rules (so later rules can overwrite
     -- earlier ones, but never caller or CF Access headers)
     local custom_set = {}
+    local applied_count = 0
     for _, rule in ipairs(custom_headers) do
         if rule.enabled and header_rules.applies(rule, host, global_domains) then
             if has_header(req.headers, rule.name) and not custom_set[rule.name:lower()] then
@@ -76,10 +77,12 @@ local function inject_custom_headers(req, custom_headers, host, global_domains)
                 end
                 req.headers[rule.name] = rule.value
                 custom_set[rule.name:lower()] = true
+                applied_count = applied_count + 1
                 log.dbg("applied rule %q for host=%s", rule.name, host)
             end
         end
     end
+    return applied_count
 end
 
 --- Log the response status and cf-ray if present.
@@ -108,20 +111,22 @@ local function apply_headers(req, config, host)
     local domains = config.domains or {}
 
     -- 1. CF Access headers (if enabled and host matches)
-    local cf_active = false
+    local cf_injected = false
     if config.enabled
        and config.client_id and config.client_id ~= ""
        and config.client_secret and config.client_secret ~= ""
        and url_match.is_allowed(host, domains) then
         inject_cf_headers(req, config.client_id, config.client_secret)
         log.dbg("injected CF Access for host=%s path=%s", host, get_path(req.url))
-        cf_active = true
+        cf_injected = true
     end
 
     -- 2. Custom header rules (applied after CF Access)
-    inject_custom_headers(req, config.custom_headers, host, domains)
+    local custom_count = inject_custom_headers(req, config.custom_headers, host, domains)
 
-    return cf_active
+    if cf_injected or custom_count > 0 then
+        log.dbg("applied: host=%s cf=%s custom=%d", host, cf_injected and "yes" or "no", custom_count)
+    end
 end
 
 --- Create a wrapper around an original request function.
