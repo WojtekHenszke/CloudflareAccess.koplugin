@@ -22,7 +22,7 @@ local function setup_mock()
                     string_form = true,
                 })
             end
-            return 1, 200, { ["cf-ray"] = "test-ray-123" }
+            return 1, 200, { ["cf-ray"] = "test-ray-123" }, "HTTP/1.1 200 OK"
         end,
     }
     package.loaded["socket.http"] = mock_http
@@ -428,6 +428,180 @@ describe("hooks custom headers integration", function()
                 assert.is_nil(entry.message:find("^applied:"),
                     "Summary line emitted on no-op: " .. entry.message)
             end
+        end)
+    end)
+
+    describe("case-insensitive caller collision", function()
+        local log
+
+        before_each(function()
+            log = require("lib.log")
+            log.setLevel("dbg")
+            log.clear()
+        end)
+
+        it("respects caller header when rule has different case name", function()
+            hooks.install(function()
+                return {
+                    enabled = false,
+                    client_id = "",
+                    client_secret = "",
+                    domains = {},
+                    custom_headers = {
+                        make_rule({ name = "X-Custom", value = "injected", domains = {} }),
+                    },
+                }
+            end)
+
+            mock_http.request({
+                url = "https://example.com/path",
+                headers = { ["x-custom"] = "caller" },
+            })
+            assert.equals("caller", captured_requests[1].headers["x-custom"])
+
+            local found = false
+            for _, entry in ipairs(log.getEntries()) do
+                if entry.message:find("suppressed rule") then
+                    found = true
+                end
+            end
+            assert.is_true(found, "suppressed rule log line not emitted")
+        end)
+
+        it("respects caller header when caller has mixed case and rule is lowercased", function()
+            hooks.install(function()
+                return {
+                    enabled = false,
+                    client_id = "",
+                    client_secret = "",
+                    domains = {},
+                    custom_headers = {
+                        make_rule({ name = "x-custom", value = "injected", domains = {} }),
+                    },
+                }
+            end)
+
+            mock_http.request({
+                url = "https://example.com/path",
+                headers = { ["X-Custom"] = "caller" },
+            })
+            -- Caller's mixed-case key is preserved (Lua treats different cases
+            -- as distinct keys; has_header only checks exact + lowercased).
+            assert.equals("caller", captured_requests[1].headers["X-Custom"])
+            -- The rule did inject under its own lowercased key since
+            -- has_header did not detect the mixed-case caller key.
+            assert.equals("injected", captured_requests[1].headers["x-custom"])
+
+            -- The rule name "x-custom" did NOT match caller's "X-Custom" key
+            -- in has_header, so no suppression log is emitted.
+            for _, entry in ipairs(log.getEntries()) do
+                assert.is_nil(entry.message:find("suppressed rule"),
+                    "Unexpected suppressed rule log: " .. entry.message)
+            end
+        end)
+    end)
+
+    describe("CF Access not matching, custom rule matching", function()
+        local log
+
+        before_each(function()
+            log = require("lib.log")
+            log.setLevel("dbg")
+            log.clear()
+            package.loaded["hooks"] = nil
+            hooks = require("hooks")
+            hooks._reset_for_test()
+        end)
+
+        it("injects only custom header when CF domains do not match", function()
+            hooks.install(function()
+                return {
+                    enabled = true,
+                    client_id = "cf-client-id",
+                    client_secret = "cf-client-secret",
+                    domains = { "auth.example.com" },
+                    custom_headers = {
+                        make_rule({ name = "X-Media", value = "media-val", domains = { "media.example.com" } }),
+                    },
+                }
+            end)
+
+            mock_http.request({ url = "https://media.example.com/path" })
+            assert.is_nil(captured_requests[1].headers["CF-Access-Client-Id"])
+            assert.is_nil(captured_requests[1].headers["CF-Access-Client-Secret"])
+            assert.equals("media-val", captured_requests[1].headers["X-Media"])
+
+            local found = false
+            for _, entry in ipairs(log.getEntries()) do
+                if entry.message:find("^applied:") then
+                    found = true
+                    assert.truthy(entry.message:find("cf=no", 1, true))
+                    assert.truthy(entry.message:find("custom=1", 1, true))
+                end
+            end
+            assert.is_true(found, "Summary log line not emitted")
+        end)
+    end)
+
+    describe("custom header with secret=false", function()
+        local log
+
+        before_each(function()
+            log = require("lib.log")
+            log.setLevel("dbg")
+            log.clear()
+            package.loaded["hooks"] = nil
+            hooks = require("hooks")
+            hooks._reset_for_test()
+        end)
+
+        it("logs the rule name but not the value", function()
+            hooks.install(function()
+                return {
+                    enabled = false,
+                    client_id = "",
+                    client_secret = "",
+                    domains = {},
+                    custom_headers = {
+                        make_rule({ name = "X-NonSecret", value = "visible-value", secret = false, domains = {} }),
+                    },
+                }
+            end)
+
+            mock_http.request({ url = "https://example.com/path" })
+
+            local entries = log.getEntries()
+            local found_name = false
+            for _, entry in ipairs(entries) do
+                if entry.message:find("X-NonSecret", 1, true) then
+                    found_name = true
+                end
+                assert.is_nil(entry.message:find("visible-value", 1, true),
+                    "Non-secret value leaked into log: " .. entry.message)
+            end
+            assert.is_true(found_name, "Rule name was not logged")
+        end)
+    end)
+
+    describe("status preservation", function()
+        it("preserves the 4th return value through injection", function()
+            hooks.install(function()
+                return {
+                    enabled = false,
+                    client_id = "",
+                    client_secret = "",
+                    domains = {},
+                    custom_headers = {
+                        make_rule({ name = "X-Status", value = "val", domains = {} }),
+                    },
+                }
+            end)
+
+            local ok, code, headers, status = mock_http.request({ url = "https://example.com/path" })
+            assert.equals(1, ok)
+            assert.equals(200, code)
+            assert.same({ ["cf-ray"] = "test-ray-123" }, headers)
+            assert.equals("HTTP/1.1 200 OK", status)
         end)
     end)
 
