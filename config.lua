@@ -126,11 +126,17 @@ function M.getDomains()
 end
 
 function M.setDomains(table)
-    get_settings():saveSetting("domains", table or {})
+    if type(table) ~= "table" then
+        table = {}
+    end
+    get_settings():saveSetting("domains", table)
     save()
 end
 
 function M.addDomain(str)
+    if type(str) ~= "string" or str == "" then
+        return
+    end
     local domains = M.getDomains()
     for _, d in ipairs(domains) do
         if d:lower() == str:lower() then
@@ -142,6 +148,9 @@ function M.addDomain(str)
 end
 
 function M.removeDomain(str)
+    if type(str) ~= "string" or str == "" then
+        return
+    end
     local domains = M.getDomains()
     local new_domains = {}
     for _, d in ipairs(domains) do
@@ -196,6 +205,7 @@ function M.getLogLevel()
 end
 
 function M.setLogLevel(str)
+    if type(str) ~= "string" then return false end
     if VALID_LOG_LEVELS[str] then
         get_settings():saveSetting("log_level", str)
         save()
