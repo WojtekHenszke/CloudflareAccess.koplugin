@@ -166,6 +166,14 @@ local function wrap(orig, get_config)
                     sink = ltn12.sink.table(sink_t),
                     headers = {},
                 }
+                if body then
+                    t.method = "POST"
+                    t.source = ltn12.source.string(body)
+                    t.headers["Content-Length"] = tostring(#body)
+                    if not t.headers["Content-Type"] then
+                        t.headers["Content-Type"] = "application/x-www-form-urlencoded"
+                    end
+                end
                 apply_headers(t, config, host)
                 log.dbg("injected (string form) for host=%s path=%s", host, get_path(req))
                 local ok, code, headers, status = orig(t)
