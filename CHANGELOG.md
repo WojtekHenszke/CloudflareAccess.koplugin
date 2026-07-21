@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-21
+
+### Fixed
+
+- Wire `config.migrate()` into plugin startup (was never called on init).
+- Preserve `enabled` and `secret` flags when editing a custom rule — Lua
+  `and`/`or` falsey trap no longer resets `false` to `true`.
+- Re-read custom rule state on every row render — toggling enabled from
+  submenu now reflects immediately without closing/reopening the editor.
+- Hide Copy button in log viewer when clipboard is unavailable (feature
+  detection via `Device` capability flags).
+- Reject `nil`, non-string, non-table, and empty-string inputs in
+  `config.lua` domain and custom-header helpers with early returns.
+- Preserve LuaSocket 4-tuple `(ok, code, headers, status)` return in both
+  table-form and string-form wrappers (status was lost).
+- Forward POST body argument when promoting string-form requests to table
+  form — `request(url, "k=v")` now sets method POST, content-length, and
+  `ltn12.source.string(body)`.
+
+### Changed
+
+- Replace dead `cf_active` return with per-request summary log line
+  (`applied: cf=<yes|no>, custom=<count>`). Suppressed when nothing
+  injected (reduces noise).
+- Single-pass redaction with unified 32-char threshold on charset
+  `[A-Za-z0-9+/=_-]` — replaces original two-pass hex/base64 design.
+
+### Added
+
+- Throttle repeated "skip host=" debug lines — one-slot cache coalesces
+  consecutive identical skips into `"skip host=X (suppressed N times)"`.
+  Cache resets on injection boundaries.
+- Show inherited global allowlist size in custom rule rows
+  (`"inherits global (N)"`).
+
+### Tests
+
+- Close coverage gaps: case-insensitive caller collision, CF Access not
+  matching with custom rule only, secret=false logging boundary, 4-tuple
+  status preservation through injection.
+
+### Build
+
+- GitHub Actions CI workflow: LuaJIT 2.1, luacheck, busted, LuaRocks cache
+  on ubuntu-latest. CI badge in README.
+- Release packaging script (`scripts/package.sh`) that produces
+  `dist/CloudflareAccess.koplugin-vX.Y.Z.zip` with runtime files only.
+  Tag-triggered GitHub Actions workflow artifact upload.
+
+### Docs
+
+- Unify `crash.log` path references across README, architecture docs, and
+  log viewer UI (all reference `DataStorage:getDataDir()`).
+- Add explicit per-platform plugin install paths to README (Android/Kobo/
+  Kindle/desktop emulator).
+- Update architecture docs for single-pass redaction and skip-line
+  throttling sections.
+
 ## [0.2.0] - 2026-06-22
 
 ### Added
@@ -79,6 +137,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MIT license, README, CONTRIBUTING guide, architecture docs, and
   SECURITY.md with threat model.
 
-[Unreleased]: https://github.com/WojtekHenszke/CloudflareAccess.koplugin/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/WojtekHenszke/CloudflareAccess.koplugin/releases/tag/v0.2.0
+[Unreleased]: https://github.com/WojtekHenszke/CloudflareAccess.koplugin/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/WojtekHenszke/CloudflareAccess.koplugin/releases/tag/v0.3.0
+[0.2.0]: https://github.com/WojtekHenszke/CloudflareAccess.koplugin/compare/v0.2.0...v0.3.0
 [0.1.0]: https://github.com/WojtekHenszke/CloudflareAccess.koplugin/releases/tag/v0.1.0
