@@ -16,13 +16,16 @@ The original solution was a [user patch](https://github.com/crocodilestick/korea
 
 ## Installation
 
-1. Download or clone this repository.
-2. Copy the `CloudflareAccess.koplugin` directory into your KOReader `plugins/` folder:
-   - **Android:** `koreader/plugins/`
-   - **Kobo:** `.adds/koreader/plugins/`
-   - **Kindle:** `linkss/koreader/plugins/` (or wherever KOReader is installed)
-   - **Emulator:** `koreader/plugins/` in your KOReader source tree
-3. Restart KOReader.
+KOReader's data directory (where `crash.log` lives) varies by platform. Install by downloading the release ZIP, extracting the `CloudflareAccess.koplugin/` directory, and placing it into the `plugins/` folder for your platform:
+
+- **Android (incl. Onyx Boox):** `/sdcard/koreader/plugins/` (or wherever KOReader was installed)
+- **Kobo:** `.adds/koreader/plugins/` (note `.adds` is hidden — enable show hidden files on your computer)
+- **Kindle:** `koreader/plugins/` within whichever extension root KOReader was installed to
+- **Desktop emulator:** `koreader/plugins/` next to the emulator binary
+
+Restart KOReader — the plugin appears in the main menu under the gear icon.
+
+On GitHub, this repository is tagged with the topic `koreader-plugin` for discoverability by community indexers and the KOReader AppStore plugin.
 
 ## Configuration
 
