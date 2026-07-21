@@ -49,17 +49,11 @@ local function redact(str)
     if type(str) ~= "string" then
         return str
     end
-    -- Lua patterns don't support {n,} quantifiers, so we match runs of
-    -- candidate chars and check the length in the replacement callback.
-    -- Two token shapes:
-    --  1. long hex strings (CF client IDs are 32+ hex chars)
-    --  2. long base64url/base64 strings (CF client secrets, 40+ chars)
-    str = str:gsub("[0-9a-fA-F]+", function(m)
-        if #m >= 32 then return "<redacted>" end
-        return m
-    end)
+    -- Single-pass: match runs of token/b64 characters, redact if >= 32.
+    -- The placeholder literal "<redacted>" cannot match this charset
+    -- because < and > are outside [A-Za-z0-9+/=_-].
     str = str:gsub("[A-Za-z0-9%+/%=_-]+", function(m)
-        if #m >= 40 then return "<redacted>" end
+        if #m >= 32 then return "<redacted>" end
         return m
     end)
     return str

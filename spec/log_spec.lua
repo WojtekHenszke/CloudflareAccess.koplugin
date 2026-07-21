@@ -141,30 +141,63 @@ describe("log", function()
     end)
 
     describe("redaction", function()
-        it("redacts long hex strings (32+ chars)", function()
-            log.info("token: %s", "abcdef0123456789abcdef0123456789")
-            local entries = log.getEntries()
-            assert.equals("token: <redacted>", entries[1].message)
+        it("passes through 31-char alphanumeric unchanged", function()
+            local s31 = string.rep("a", 31)
+            assert.equals(s31, log.redact(s31))
         end)
 
-        it("does not redact short hex strings (< 32 chars)", function()
-            log.info("id: %s", "abcdef0123456789")
-            local entries = log.getEntries()
-            assert.equals("id: abcdef0123456789", entries[1].message)
+        it("redacts 32-char hex to <redacted>", function()
+            local hex32 = string.rep("a", 8) .. string.rep("0", 12) .. string.rep("f", 12)
+            assert.equals("<redacted>", log.redact(hex32))
         end)
 
-        it("redacts long base64-ish strings (40+ chars)", function()
-            local secret = string.rep("ABCD", 12) -- 48 chars
-            log.info("secret: %s", secret)
-            local entries = log.getEntries()
-            assert.equals("secret: <redacted>", entries[1].message)
+        it("redacts 32-char mixed alphanumeric", function()
+            local mixed = "abc123def456ghi789jkl012mno345pq"
+            assert.equals("<redacted>", log.redact(mixed))
+        end)
+
+        it("redacts base64 with + and / (length >= 32)", function()
+            local b64 = "ABcd+EFgh/IJkl+MNop/QRst+UVwx/YZ" -- 32 chars
+            assert.equals("<redacted>", log.redact(b64))
+        end)
+
+        it("redacts base64 with = padding (length >= 32)", function()
+            local padded = string.rep("A", 30) .. "==" -- 32 chars
+            assert.equals("<redacted>", log.redact(padded))
+        end)
+
+        it("redacts 32 random alphanumeric chars", function()
+            local rand = "K9xL2mN7pQ4rS8tU1vW6yZ3aB5cD0eFG" -- 32 chars
+            assert.equals("<redacted>", log.redact(rand))
+        end)
+
+        it("does not re-redact the <redacted> literal", function()
+            local result = log.redact("<redacted>")
+            assert.equals("<redacted>", result)
+            result = log.redact(result)
+            assert.equals("<redacted>", result)
+        end)
+
+        it("passes through short strings unchanged", function()
+            assert.equals("abc", log.redact("abc"))
+            assert.equals("hello world", log.redact("hello world"))
+        end)
+
+        it("passes through empty string unchanged", function()
+            assert.equals("", log.redact(""))
+        end)
+
+        it("returns non-string input unchanged", function()
+            assert.is_nil(log.redact(nil))
+            assert.equals(42, log.redact(42))
+            assert.equals(true, log.redact(true))
         end)
 
         it("redacts embedded in a longer message", function()
             log.info("host=example.com token=%s status=200",
                 "abcdef0123456789abcdef0123456789")
             local entries = log.getEntries()
-            assert.equals("host=example.com token=<redacted> status=200",
+            assert.equals("host=example.com <redacted> status=200",
                 entries[1].message)
         end)
 
